@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DREAD PICK — Horror Movie Randomizer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Creepster&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+  :root {
+    --bg: #0a0a0a; --fg: #e8e0d6; --muted: #6b5e52;
+    --accent: #c41e1e; --accent-glow: #ff2222;
+    --card: #141010; --card-hover: #1e1616;
+    --border: #2a1e1e; --blood: #8b0000;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'IBM Plex Sans', sans-serif; background: var(--bg); color: var(--fg); min-height: 100vh; overflow-x: hidden; }
+  .font-creep { font-family: 'Creepster', cursive; }
+  #fogCanvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+  @keyframes flicker { 0%,100%{opacity:1}3%{opacity:.85}6%{opacity:1}7.5%{opacity:.9}9%{opacity:1}50%{opacity:1}52%{opacity:.88}53%{opacity:1} }
+  .flicker { animation: flicker 4s infinite; }
+  @keyframes glitch { 0%{transform:translate(0)}20%{transform:translate(-3px,2px)}40%{transform:translate(3px,-2px)}60%{transform:translate(-2px,-1px)}80%{transform:translate(2px,1px)}100%{transform:translate(0)} }
+  .glitch-active { animation: glitch 0.15s linear infinite; }
+  @keyframes drip { 0%{height:0;opacity:0}10%{opacity:1}100%{height:80px;opacity:.6} }
+  .blood-drip { position:absolute;width:3px;background:linear-gradient(to bottom,var(--accent),transparent);border-radius:0 0 50% 50%;animation:drip 3s ease-in infinite; }
+  @keyframes pulseGlow { 0%,100%{box-shadow:0 0 20px rgba(196,30,30,.3),0 0 60px rgba(196,30,30,.1)}50%{box-shadow:0 0 40px rgba(196,30,30,.6),0 0 100px rgba(196,30,30,.2)} }
+  .btn-dread { animation: pulseGlow 2.5s ease-in-out infinite; transition: all 0.3s ease; }
+  .btn-dread:hover { animation:none;box-shadow:0 0 50px rgba(255,34,34,.7),0 0 120px rgba(255,34,34,.3);transform:scale(1.05); }
+  .btn-dread:active { transform: scale(0.97); }
+  @keyframes cardReveal { 0%{transform:scale(.7) rotateY(90deg);opacity:0}50%{transform:scale(1.05) rotateY(-5deg);opacity:1}100%{transform:scale(1) rotateY(0);opacity:1} }
+  .card-reveal { animation: cardReveal 0.8s cubic-bezier(0.22,1,0.36,1) forwards; }
+  @keyframes shake { 0%,100%{transform:translateX(0)}10%{transform:translateX(-8px)}20%{transform:translateX(8px)}30%{transform:translateX(-6px)}40%{transform:translateX(6px)}50%{transform:translateX(-4px)}60%{transform:translateX(4px)}70%{transform:translateX(-2px)}80%{transform:translateX(2px)} }
+  .shake { animation: shake 0.6s ease-in-out; }
+  @keyframes float { 0%,100%{transform:translateY(0) rotate(0);opacity:0}10%{opacity:.8}90%{opacity:.8}100%{transform:translateY(-100vh) rotate(720deg);opacity:0} }
+  .particle { position:fixed;width:2px;height:2px;background:var(--accent);border-radius:50%;pointer-events:none;z-index:1; }
+  ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--blood);border-radius:3px}
+  .chip { transition: all 0.25s ease; cursor: pointer; user-select: none; }
+  .chip:hover { background: var(--card-hover); border-color: var(--accent); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  @keyframes shimmer { 0%{background-position:-200% 0}100%{background-position:200% 0} }
+  .poster-shimmer { background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.03) 50%,transparent 100%);background-size:200% 100%;animation:shimmer 3s infinite; }
+  .star-filled { color: var(--accent); } .star-empty { color: var(--border); }
+  @keyframes toastIn { 0%{transform:translateY(100px);opacity:0}100%{transform:translateY(0);opacity:1} }
+  @keyframes toastOut { 0%{transform:translateY(0);opacity:1}100%{transform:translateY(100px);opacity:0} }
+  .toast-enter { animation: toastIn 0.4s ease forwards; } .toast-exit { animation: toastOut 0.4s ease forwards; }
+  .vignette { position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2;background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,.7) 100%); }
+  .scanlines { position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:3;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px); }
+  .history-item { transition: all 0.2s ease; } .history-item:hover { background: var(--card-hover); border-color: var(--accent); }
+  @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important; } }
+  @media (max-width: 768px) { .movie-card-grid { grid-template-columns: 1fr !important; } }
+</style>
+</head>
+<body>
+<canvas id="fogCanvas"></canvas>
+<div class="vignette"></div>
+<div class="scanlines"></div>
+<div id="bloodDrips" class="fixed top-0 left-0 w-full h-0 z-10 pointer-events-none"></div>
+<div id="particles" class="fixed inset-0 pointer-events-none z-10"></div>
+<div id="toastContainer" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center"></div>
+
+<div class="relative z-10 min-h-screen flex flex-col">
+  <header class="relative py-8 px-4 text-center">
+    <div class="relative inline-block">
+      <h1 class="font-creep text-6xl md:text-8xl tracking-wider flicker" style="color: var(--accent);">DREAD PICK</h1>
+      <span class="font-creep text-6xl md:text-8xl tracking-wider absolute top-0 left-0 opacity-70" style="color:#00cccc;clip-path:inset(0 0 65% 0);" aria-hidden="true">DREAD PICK</span>
+      <span class="font-creep text-6xl md:text-8xl tracking-wider absolute top-0 left-0 opacity-70" style="color:var(--accent);clip-path:inset(65% 0 0 0);" aria-hidden="true">DREAD PICK</span>
+    </div>
+    <p class="mt-3 text-sm md:text-base tracking-widest uppercase" style="color: var(--muted);">Your nightmare awaits below</p>
+    <div class="mx-auto mt-6 w-48 h-px" style="background:linear-gradient(to right,transparent,var(--accent),transparent);"></div>
+  </header>
+
+  <main class="flex-1 px-4 md:px-8 max-w-6xl mx-auto w-full pb-16">
+    <section class="mb-8" aria-label="Movie filters">
+      <div class="flex items-center gap-2 mb-4">
+        <i class="fas fa-filter text-xs" style="color: var(--muted);"></i>
+        <span class="text-xs uppercase tracking-widest" style="color: var(--muted);">Filter your doom</span>
+      </div>
+      <div class="mb-4">
+        <span class="text-xs uppercase tracking-wider mb-2 block" style="color: var(--muted);">Subgenre</span>
+        <div id="genreChips" class="flex flex-wrap gap-2" role="group" aria-label="Subgenre filters"></div>
+      </div>
+      <div class="mb-4">
+        <span class="text-xs uppercase tracking-wider mb-2 block" style="color: var(--muted);">Decade</span>
+        <div id="decadeChips" class="flex flex-wrap gap-2" role="group" aria-label="Decade filters"></div>
+      </div>
+      <div class="mb-2">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs uppercase tracking-wider" style="color: var(--muted);">Minimum Rating</span>
+          <span id="ratingValue" class="text-sm font-bold" style="color: var(--accent);">5.0</span>
+        </div>
+        <input type="range" id="ratingSlider" min="3" max="9" step="0.5" value="5" class="w-full h-1 rounded-full appearance-none cursor-pointer" style="background:linear-gradient(to right,var(--accent),var(--border));" aria-label="Minimum rating filter">
+      </div>
+    </section>
+
+    <section class="text-center mb-10">
+      <button id="randomizeBtn" class="btn-dread font-creep text-3xl md:text-4xl px-12 py-5 rounded-lg border-2 cursor-pointer" style="background:var(--card);border-color:var(--accent);color:var(--fg);" aria-label="Randomize a horror movie">
+        <i class="fas fa-skull-crossbones mr-3"></i>CONJURE A FILM
+      </button>
+      <p class="mt-3 text-xs" style="color: var(--muted);"><span id="availableCount">0</span> nightmares in the vault</p>
+    </section>
+
+    <section id="resultSection" class="mb-12 hidden" aria-label="Randomized movie result">
+      <div id="resultCard" class="mx-auto max-w-3xl rounded-xl overflow-hidden border" style="background:var(--card);border-color:var(--border);"></div>
+    </section>
+
+    <section id="historySection" class="hidden" aria-label="Previously randomized movies">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-creep text-2xl" style="color:var(--accent);">Recent Terrors</h2>
+        <button id="clearHistory" class="text-xs uppercase tracking-wider px-3 py-1 rounded border cursor-pointer transition-colors hover:border-red-600" style="color:var(--muted);border-color:var(--border);">Clear All</button>
+      </div>
+      <div id="historyList" class="grid gap-3"></div>
+    </section>
+  </main>
+
+  <footer class="text-center py-6 px-4" style="color:var(--muted);">
+    <div class="mx-auto w-24 h-px mb-4" style="background:linear-gradient(to right,transparent,var(--border),transparent);"></div>
+    <p class="text-xs uppercase tracking-widest">You can't unwatch what you've seen</p>
+  </footer>
+</div>
+
+<script>
+const movies=[
+{title:"The Thing",year:1982,director:"John Carpenter",rating:8.2,subgenre:"Body Horror",synopsis:"A shape-shifting alien assumes the appearance of crew members at an Antarctic research station. Paranoia consumes them.",seed:"thething82"},
+{title:"Hereditary",year:2018,director:"Ari Aster",rating:7.3,subgenre:"Supernatural",synopsis:"After the family matriarch dies, a grieving family unravels cryptic and terrifying secrets about their ancestry.",seed:"hereditary18"},
+{title:"The Exorcist",year:1973,director:"William Friedkin",rating:8.1,subgenre:"Demonic",synopsis:"When a young girl is possessed by a mysterious entity, her mother seeks the help of two priests to save her.",seed:"exorcist73"},
+{title:"The Witch",year:2015,director:"Robert Eggers",rating:6.9,subgenre:"Folk Horror",synopsis:"A family in 1630s New England is torn apart by witchcraft, black magic, and possession after being banished from their colony.",seed:"witch15"},
+{title:"Alien",year:1979,director:"Ridley Scott",rating:8.5,subgenre:"Creature",synopsis:"The crew of the Nostromo encounter a deadly alien lifeform after investigating a mysterious transmission. In space no one can hear you scream.",seed:"alien79"},
+{title:"The Shining",year:1980,director:"Stanley Kubrick",rating:8.4,subgenre:"Psychological",synopsis:"A writer takes a winter caretaker position at the isolated Overlook Hotel, where sinister forces drive him mad.",seed:"shining80"},
+{title:"A Nightmare on Elm Street",year:1984,director:"Wes Craven",rating:7.5,subgenre:"Slasher",synopsis:"The monstrous spirit of a slain child murderer seeks revenge by invading the dreams of teenagers.",seed:"elmstreet84"},
+{title:"The Blair Witch Project",year:1999,director:"Myrick / Sánchez",rating:6.5,subgenre:"Found Footage",synopsis:"Three film students vanish after traveling into the woods to make a documentary about the Blair Witch legend.",seed:"blairwitch99"},
+{title:"The Descent",year:2005,director:"Neil Marshall",rating:7.2,subgenre:"Creature",synopsis:"A group of women go caving in an unmapped system and find themselves hunted by blind, cave-dwelling humanoids.",seed:"descent05"},
+{title:"Midsommar",year:2019,director:"Ari Aster",rating:7.1,subgenre:"Folk Horror",synopsis:"A couple travels to a remote Swedish village for a midsummer festival. The daylight horrors are unlike anything they imagined.",seed:"midsommar19"},
+{title:"Hellraiser",year:1987,director:"Clive Barker",rating:7.0,subgenre:"Body Horror",synopsis:"A puzzle box opens a gateway to a realm of extreme pleasures and pain, overseen by the Cenobites.",seed:"hellraiser87"},
+{title:"The Ring",year:2002,director:"Gore Verbinski",rating:7.1,subgenre:"Supernatural",synopsis:"A journalist investigates a cursed videotape that seemingly kills anyone who watches it seven days later.",seed:"ring02"},
+{title:"Rosemary's Baby",year:1968,director:"Roman Polanski",rating:8.0,subgenre:"Demonic",synopsis:"A young couple moves into an ominous apartment building, and a pregnant woman suspects her neighbors have sinister plans.",seed:"rosemary68"},
+{title:"Get Out",year:2017,director:"Jordan Peele",rating:7.7,subgenre:"Psychological",synopsis:"A young Black man visits his white girlfriend's family estate, discovering a disturbing secret beneath their welcoming facade.",seed:"getout17"},
+{title:"Cloverfield",year:2008,director:"Matt Reeves",rating:7.0,subgenre:"Found Footage",synopsis:"A going-away party is interrupted by a devastating monster attack on New York City, captured on a handheld camera.",seed:"cloverfield08"},
+{title:"It Follows",year:2014,director:"David Robert Mitchell",rating:6.9,subgenre:"Supernatural",synopsis:"After a sexual encounter, a young woman is pursued by a supernatural entity passed from person to person.",seed:"itfollows14"},
+{title:"The Texas Chain Saw Massacre",year:1974,director:"Tobe Hooper",rating:7.4,subgenre:"Slasher",synopsis:"Five friends encounter a family of cannibalistic killers, including the chainsaw-wielding Leatherface.",seed:"texas74"},
+{title:"Suspiria",year:1977,director:"Dario Argento",rating:7.7,subgenre:"Supernatural",synopsis:"An American ballet dancer arrives at a prestigious German academy secretly run by a coven of witches.",seed:"suspiria77"},
+{title:"Annihilation",year:2018,director:"Alex Garland",rating:7.2,subgenre:"Cosmic Horror",synopsis:"A team of scientists enters Area X, a quarantined zone where alien forces mutate all biological life.",seed:"annihilation18"},
+{title:"The Void",year:2016,director:"Gillespie / Kostanski",rating:6.1,subgenre:"Cosmic Horror",synopsis:"A sheriff encounters a blood-soaked figure leading to a hospital where cultists and interdimensional horrors await.",seed:"void16"},
+{title:"Halloween",year:1978,director:"John Carpenter",rating:7.7,subgenre:"Slasher",synopsis:"Fifteen years after murdering his sister, Michael Myers escapes and returns to Haddonfield to kill again.",seed:"halloween78"},
+{title:"Black Swan",year:2010,director:"Darren Aronofsky",rating:8.0,subgenre:"Psychological",synopsis:"A dedicated ballerina's pursuit of perfection drives her into a spiral of hallucinations and fractured identity.",seed:"blackswan10"},
+{title:"REC",year:2007,director:"Balagueró / Plaza",rating:7.4,subgenre:"Found Footage",synopsis:"A TV reporter and cameraman cover the night shift at a fire station, responding to a call that traps them with infected residents.",seed:"rec07"},
+{title:"The Conjuring",year:2013,director:"James Wan",rating:7.5,subgenre:"Haunted House",synopsis:"Paranormal investigators Ed and Lorraine Warren help a family terrorized by a dark presence in their farmhouse.",seed:"conjuring13"},
+{title:"Sinister",year:2012,director:"Scott Derrickson",rating:6.8,subgenre:"Supernatural",synopsis:"A true-crime writer discovers a box of home videos that reveal a demonic entity linked to the murders he's researching.",seed:"sinister12"},
+{title:"Event Horizon",year:1997,director:"Paul W.S. Anderson",rating:6.7,subgenre:"Cosmic Horror",synopsis:"A rescue crew investigates a spaceship that disappeared into a black hole and has returned with something terrifying.",seed:"eventhorizon97"},
+{title:"Candyman",year:1992,director:"Bernard Rose",rating:6.8,subgenre:"Slasher",synopsis:"A graduate student researching urban legends summons the vengeful hook-handed spirit of Candyman.",seed:"candyman92"},
+{title:"The Babadook",year:2014,director:"Jennifer Kent",rating:6.9,subgenre:"Psychological",synopsis:"A single mother and her son are haunted by a menacing presence from a mysterious children's book.",seed:"babadook14"},
+{title:"Noroi: The Curse",year:2005,director:"Kôji Shiraishi",rating:6.7,subgenre:"Found Footage",synopsis:"A paranormal researcher disappears while investigating bizarre events. His final footage reveals a horrifying truth.",seed:"noroi05"},
+{title:"A Quiet Place",year:2018,director:"John Krasinski",rating:7.5,subgenre:"Creature",synopsis:"In a post-apocalyptic world where blind creatures hunt by sound, a family must navigate life in silence.",seed:"quietplace18"},
+{title:"Ju-On: The Grudge",year:2002,director:"Takashi Shimizu",rating:6.7,subgenre:"Haunted House",synopsis:"A deadly curse born from a house where a violent murder occurred spreads to anyone who enters.",seed:"juon02"},
+{title:"Tusk",year:2014,director:"Kevin Smith",rating:5.4,subgenre:"Body Horror",synopsis:"A podcaster interviews an eccentric recluse who has horrifying plans involving walruses.",seed:"tusk14"},
+{title:"Under the Skin",year:2013,director:"Jonathan Glazer",rating:7.2,subgenre:"Cosmic Horror",synopsis:"A mysterious alien disguised as a young woman drives through Scotland seducing and consuming lonely men.",seed:"undertheskin13"},
+{title:"Talk to Me",year:2022,director:"Danny / Michael Philippou",rating:7.1,subgenre:"Supernatural",synopsis:"Teenagers conjure spirits using an embalmed hand, but opening the door lets something try to come through permanently.",seed:"talktome22"},
+{title:"Barbarian",year:2022,director:"Zach Cregger",rating:7.0,subgenre:"Haunted House",synopsis:"A woman renting an Airbnb discovers it's double-booked, but the charming fellow tenant is the least of the horrors.",seed:"barbarian22"},
+{title:"Saw",year:2004,director:"James Wan",rating:7.6,subgenre:"Survival",synopsis:"Two men wake up trapped in a room and must follow a killer's twisted rules to escape. Want to play a game?",seed:"saw04"},
+{title:"Don't Breathe",year:2016,director:"Fede Alvarez",rating:7.1,subgenre:"Survival",synopsis:"Three young thieves break into a blind man's house, only to discover he is far more dangerous than they imagined.",seed:"dontbreathe16"},
+{title:"Green Room",year:2015,director:"Jeremy Saulnier",rating:7.0,subgenre:"Survival",synopsis:"A punk band witnesses a murder at a neo-Nazi club and must fight for survival while the gang eliminates witnesses.",seed:"greenroom15"},
+{title:"The Lighthouse",year:2019,director:"Robert Eggers",rating:7.4,subgenre:"Cosmic Horror",synopsis:"Two lighthouse keepers become trapped on a remote island, descending into madness and mythic hallucinations.",seed:"lighthouse19"},
+{title:"Nosferatu",year:1922,director:"F.W. Murnau",rating:7.9,subgenre:"Vampire",synopsis:"A mysterious Count Orlok moves from Transylvania to Germany, bringing death and plague in this silent era masterpiece.",seed:"nosferatu22"},
+{title:"The Cabinet of Dr. Caligari",year:1920,director:"Robert Wiene",rating:8.1,subgenre:"Psychological",synopsis:"A hypnotist uses a somnambulist to commit murders in this twisted silent film that birthed German Expressionism.",seed:"caligari20"},
+{title:"Psycho",year:1960,director:"Alfred Hitchcock",rating:8.5,subgenre:"Psychological",synopsis:"A secretary embezzles money and checks into the Bates Motel, run by a young man dominated by his mother.",seed:"psycho60"},
+{title:"Peeping Tom",year:1960,director:"Michael Powell",rating:7.7,subgenre:"Slasher",synopsis:"A lonely cameraman murders women while filming their dying moments, exploring the link between voyeurism and violence.",seed:"peeping60"},
+{title:"Night of the Living Dead",year:1968,director:"George A. Romero",rating:7.9,subgenre:"Zombie",synopsis:"A group of people barricade themselves in a farmhouse to survive an onslaught of reanimated corpses.",seed:"notld68"},
+{title:"Carrie",year:1976,director:"Brian De Palma",rating:7.4,subgenre:"Supernatural",synopsis:"A bullied teenage girl with telekinetic powers unleashes terrifying vengeance after a cruel prank at the prom.",seed:"carrie76"},
+{title:"The Omen",year:1976,director:"Richard Donner",rating:7.5,subgenre:"Demonic",synopsis:"An American diplomat discovers his adopted son may be the Antichrist, surrounded by mysterious and deadly accidents.",seed:"omen76"},
+{title:"Dawn of the Dead",year:1978,director:"George A. Romero",rating:8.0,subgenre:"Zombie",synopsis:"Survivors of a zombie apocalypse take refuge in a shopping mall, only to find it besieged by the undead and bikers.",seed:"dawn78"},
+{title:"The Amityville Horror",year:1979,director:"Stuart Rosenberg",rating:6.2,subgenre:"Haunted House",synopsis:"A family moves into a house where a mass murder occurred, only to be tormented by demonic forces.",seed:"amityville79"},
+{title:"Friday the 13th",year:1980,director:"Sean S. Cunningham",rating:6.4,subgenre:"Slasher",synopsis:"Camp counselors are stalked and murdered by an unseen killer at the infamous Camp Crystal Lake.",seed:"friday13th80"},
+{title:"An American Werewolf in London",year:1981,director:"John Landis",rating:7.4,subgenre:"Werewolf",synopsis:"Two American tourists are attacked by a werewolf in England. One dies, the other transforms.",seed:"werewolf81"},
+{title:"The Evil Dead",year:1981,director:"Sam Raimi",rating:7.4,subgenre:"Demonic",synopsis:"Five friends vacationing in a remote cabin accidentally unleash demons after playing a tape of incantations.",seed:"evildead81"},
+{title:"Poltergeist",year:1982,director:"Tobe Hooper",rating:7.4,subgenre:"Haunted House",synopsis:"A family's suburban home is invaded by malevolent ghosts that abduct their youngest daughter.",seed:"poltergeist82"},
+{title:"Christine",year:1983,director:"John Carpenter",rating:6.7,subgenre:"Supernatural",synopsis:"A nerdy teenager restores an old Plymouth Fury, only to discover the car has a jealous, murderous mind of its own.",seed:"christine83"},
+{title:"Child's Play",year:1988,director:"Tom Holland",rating:6.6,subgenre:"Slasher",synopsis:"A single mother gives her son a doll for his birthday, unaware that it contains the soul of a serial killer.",seed:"childsplay88"},
+{title:"Pet Sematary",year:1989,director:"Mary Lambert",rating:6.6,subgenre:"Demonic",synopsis:"A family discovers a burial ground that brings the dead back to life, but what comes back is never the same.",seed:"petsematary89"},
+{title:"Scream",year:1996,director:"Wes Craven",rating:7.4,subgenre:"Slasher",synopsis:"A masked killer called Ghostface terrorizes high school students in this self-aware slasher classic.",seed:"scream96"},
+{title:"Ringu",year:1998,director:"Hideo Nakata",rating:7.2,subgenre:"Supernatural",synopsis:"A reporter investigates a cursed videotape that kills anyone who watches it after seven days.",seed:"ringu98"},
+{title:"Audition",year:1999,director:"Takashi Miike",rating:7.2,subgenre:"Psychological",synopsis:"A widower holds fake movie auditions to find a new wife, but the woman he chooses hides a terrifying secret.",seed:"audition99"},
+{title:"The Sixth Sense",year:1999,director:"M. Night Shyamalan",rating:8.2,subgenre:"Supernatural",synopsis:"A boy who communicates with dead people seeks the help of a child psychologist. They see dead people.",seed:"sixthsense99"},
+{title:"Session 9",year:2001,director:"Brad Anderson",rating:6.4,subgenre:"Psychological",synopsis:"An asbestos cleaning crew works in an abandoned mental hospital, where dark secrets erode their sanity.",seed:"session9_01"},
+{title:"28 Days Later",year:2002,director:"Danny Boyle",rating:7.5,subgenre:"Zombie",synopsis:"A bicycle courier wakes from a coma to find London overrun by Rage-infected zombies. Total societal collapse.",seed:"28days02"},
+{title:"The Hills Have Eyes",year:2006,director:"Alexandre Aja",rating:6.4,subgenre:"Survival",synopsis:"A family stranded in the desert is hunted by deformed, cannibalistic mutants living in the hills.",seed:"hillshave06"},
+{title:"The Host",year:2006,director:"Bong Joon-ho",rating:7.1,subgenre:"Creature",synopsis:"A monstrous creature emerges from the Han River and kidnaps a young girl. Her family fights to get her back.",seed:"host06"},
+{title:"The Orphanage",year:2007,director:"J.A. Bayona",rating:7.4,subgenre:"Haunted House",synopsis:"A woman returns to her childhood orphanage with her adopted son, but strange events suggest a dark presence.",seed:"orphanage07"},
+{title:"Let the Right One In",year:2008,director:"Tomas Alfredson",rating:7.9,subgenre:"Vampire",synopsis:"A bullied boy befriends a mysterious girl who moves in next door. She happens to be a vampire.",seed:"lettheright08"},
+{title:"Paranormal Activity",year:2007,director:"Oren Peli",rating:6.3,subgenre:"Found Footage",synopsis:"A couple sets up cameras in their home to capture evidence of a demonic presence haunting them at night.",seed:"paranormal07"},
+{title:"Trick 'r Treat",year:2007,director:"Michael Dougherty",rating:6.8,subgenre:"Anthology",synopsis:"Four interwoven Halloween tales of terror unfold in a small town, connected by a mysterious trick-or-treater.",seed:"trickr07"},
+{title:"Martyrs",year:2008,director:"Pascal Laugier",rating:7.2,subgenre:"Survival",synopsis:"A young woman seeks revenge on the people who kidnapped and tortured her as a child, leading to extreme philosophical horror.",seed:"martyrs08"},
+{title:"Inside",year:2007,director:"Bustillo / Maury",rating:6.8,subgenre:"Survival",synopsis:"A pregnant widow is terrorized on Christmas Eve by a mysterious woman who will stop at nothing to take her unborn baby.",seed:"inside07"},
+{title:"The Cabin in the Woods",year:2012,director:"Drew Goddard",rating:7.0,subgenre:"Creature",synopsis:"Five friends go to a remote cabin, but their fate is being manipulated by technicians in an underground facility.",seed:"cabin12"},
+{title:"The Autopsy of Jane Doe",year:2016,director:"André Øvredal",rating:6.8,subgenre:"Supernatural",synopsis:"A father-son coroner team performs an autopsy on an unidentified woman with increasingly bizarre and terrifying injuries.",seed:"janedoe16"},
+{title:"Raw",year:2016,director:"Julia Ducournau",rating:7.1,subgenre:"Body Horror",synopsis:"A young vegetarian veterinary student develops an insatiable craving for meat after a bizarre hazing ritual.",seed:"raw16"},
+{title:"Train to Busan",year:2016,director:"Yeon Sang-ho",rating:7.6,subgenre:"Zombie",synopsis:"A father and daughter board a train to Busan just as a zombie outbreak sweeps South Korea. Survival rides the rails.",seed:"busan16"},
+{title:"Us",year:2019,director:"Jordan Peele",rating:6.8,subgenre:"Psychological",synopsis:"A family's beach vacation is interrupted by the arrival of their doppelgängers, who have dark intentions.",seed:"us19"},
+{title:"Mandy",year:2018,director:"Panos Cosmatos",rating:6.5,subgenre:"Survival",synopsis:"A lumberjack hunts down a deranged cult and their demon bikers after they murder the love of his life.",seed:"mandy18"},
+{title:"Skinamarink",year:2022,director:"Kyle Edward Ball",rating:5.0,subgenre:"Experimental",synopsis:"Two children wake up to find their father missing and windows and doors in their house disappearing. Pure childhood nightmare logic.",seed:"skin22"},
+{title:"X",year:2022,director:"Ti West",rating:6.6,subgenre:"Slasher",synopsis:"A group of filmmakers go to a rural Texas farm to shoot an adult film, but their elderly hosts catch them in the act.",seed:"x22"},
+{title:"Pearl",year:2022,director:"Ti West",rating:7.2,subgenre:"Psychological",synopsis:"In 1918, a young woman trapped on an isolated farm dreams of stardom, descending into violent delusion.",seed:"pearl22"},
+{title:"Smile",year:2022,director:"Parker Finn",rating:6.5,subgenre:"Supernatural",synopsis:"A therapist witnesses a patient's suicide and begins experiencing terrifying occurrences linked to a deadly curse.",seed:"smile22"},
+{title:"Nope",year:2022,director:"Jordan Peele",rating:6.8,subgenre:"Creature",synopsis:"Residents of a gulch in California witness a mysterious and terrifying abnormality in the sky. Don't look up.",seed:"nope22"},
+{title:"Infinity Pool",year:2023,director:"Brandon Cronenberg",rating:6.3,subgenre:"Body Horror",synopsis:"A resort guest discovers a terrifying subculture of cloning, hedonism, and death on a fictional island.",seed:"infinity23"},
+{title:"Evil Dead Rise",year:2023,director:"Lee Cronin",rating:6.5,subgenre:"Demonic",synopsis:"A reunion between two estranged sisters is cut short by the rise of flesh-possessing demons in a cramped LA apartment.",seed:"evildead23"},
+{title:"Late Night with the Devil",year:2024,director:"Cameron / Colin Cairnes",rating:7.0,subgenre:"Demonic",synopsis:"A late-night TV host desperate for ratings broadcasts a live seance on Halloween night 1977, unleashing evil.",seed:"latenight24"},
+{title:"Longlegs",year:2024,director:"Osgood Perkins",rating:6.5,subgenre:"Demonic",synopsis:"An FBI agent hunts a satanic serial killer who has been murdering families for decades. The signs are always there.",seed:"longlegs24"},
+{title:"The Substance",year:2024,director:"Coralie Fargeat",rating:7.1,subgenre:"Body Horror",synopsis:"A fading celebrity takes a black-market drug to create a younger version of herself, with grotesque consequences.",seed:"substance24"},
+{title:"Oddity",year:2024,director:"Damian Mc Carthy",rating:6.8,subgenre:"Supernatural",synopsis:"A woman who deals in oddities suspects her sister was murdered and uses haunted objects to catch the killer.",seed:"oddity24"},
+{title:"Frankenstein",year:1931,director:"James Whale",rating:7.8,subgenre:"Gothic",synopsis:"Dr. Henry Frankenstein pieces together a creature from dead bodies and brings it to life, with tragic consequences.",seed:"frankenstein31"},
+{title:"Dracula",year:1931,director:"Tod Browning",rating:7.5,subgenre:"Vampire",synopsis:"The vampire Count Dracula travels to England to seduce his victims and spread the curse of the undead.",seed:"dracula31"},
+{title:"The Fly",year:1986,director:"David Cronenberg",rating:7.5,subgenre:"Body Horror",synopsis:"A brilliant scientist's teleportation experiment goes horribly wrong when a fly fuses with his DNA.",seed:"fly86"},
+{title:"A Tale of Two Sisters",year:2003,director:"Kim Jee-woon",rating:7.1,subgenre:"Psychological",synopsis:"Two sisters return home from a mental institution and face a cruel stepmother and unsettling supernatural events.",seed:"twosisters03"},
+{title:"Pulse",year:2006,director:"Kiyoshi Kurosawa",rating:6.5,subgenre:"Supernatural",synopsis:"Ghosts invade the living world through the internet, driving people to despair and isolation.",seed:"pulse06"},
+{title:"The Wailing",year:2016,director:"Na Hong-jin",rating:7.4,subgenre:"Folk Horror",synopsis:"A policeman investigates a mysterious illness spreading through a village, suspecting a reclusive Japanese stranger.",seed:"wailing16"},
+{title:"Thirst",year:2009,director:"Park Chan-wook",rating:6.9,subgenre:"Vampire",synopsis:"A priest volunteering for a medical experiment contracts a virus and turns into a vampire, struggling with new desires.",seed:"thirst09"},
+{title:"I Saw the Devil",year:2010,director:"Kim Jee-woon",rating:7.8,subgenre:"Survival",synopsis:"A secret agent tracks down the serial killer who murdered his fiancée, embarking on a brutal path of vengeance.",seed:"sawdevil10"},
+{title:"Cure",year:1997,director:"Kiyoshi Kurosawa",rating:7.4,subgenre:"Psychological",synopsis:"A detective investigates a series of murders committed by different people who all have the same compulsion.",seed:"cure97"},
+{title:"Incantation",year:2022,director:"Kevin Ko",rating:6.2,subgenre:"Found Footage",synopsis:"A mother tries to save her daughter from a deadly curse she accidentally triggered six years ago.",seed:"incantation22"},
+{title:"Terrifier 2",year:2022,director:"Damien Leone",rating:6.1,subgenre:"Slasher",synopsis:"Art the Clown returns to terrorize a town on Halloween night, targeting a teenage girl and her brother.",seed:"terrifier22"},
+{title:"The Strangers",year:2008,director:"Bryan Bertino",rating:6.2,subgenre:"Slasher",synopsis:"A couple staying in an isolated vacation home is terrorized by three masked strangers who knock on the door.",seed:"strangers08"},
+{title:"Creep",year:2014,director:"Patrick Brice",rating:6.2,subgenre:"Found Footage",synopsis:"A videographer answers a Craigslist ad to film a dying man's final message, but the man's requests become increasingly bizarre.",seed:"creep14"},
+{title:"The Ruins",year:2008,director:"Carter Smith",rating:6.0,subgenre:"Creature",synopsis:"Tourists in Mexico become trapped on an archaeological dig site occupied by a deadly, sentient vine.",seed:"ruins08"}
+];
+
+// ─── Subgenres & Decades ───
+const subgenres = [...new Set(movies.map(m => m.subgenre))].sort();
+const decades = [...new Set(movies.map(m => Math.floor(m.year / 10) * 10))].sort();
+
+// ─── State ───
+let activeGenres = new Set();
+let activeDecades = new Set();
+let minRating = 5;
+let history = [];
+let isRandomizing = false;
+
+// ─── Initialize UI ───
+function init() {
+  renderChips();
+  updateAvailableCount();
+  initFogCanvas();
+  spawnBloodDrips();
+  spawnParticles();
+  bindEvents();
+}
+
+function renderChips() {
+  const genreContainer = document.getElementById('genreChips');
+  genreContainer.innerHTML = subgenres.map(g => `
+    <button class="chip text-xs px-3 py-1.5 rounded-full border"
+            style="border-color: var(--border); color: var(--muted);"
+            data-genre="${g}" aria-pressed="false">${g}</button>
+  `).join('');
+
+  const decadeContainer = document.getElementById('decadeChips');
+  decadeContainer.innerHTML = decades.map(d => `
+    <button class="chip text-xs px-3 py-1.5 rounded-full border"
+            style="border-color: var(--border); color: var(--muted);"
+            data-decade="${d}" aria-pressed="false">${d}s</button>
+  `).join('');
+}
+
+function getFilteredMovies() {
+  return movies.filter(m => {
+    if (activeGenres.size > 0 && !activeGenres.has(m.subgenre)) return false;
+    if (activeDecades.size > 0 && !activeDecades.has(Math.floor(m.year / 10) * 10)) return false;
+    if (m.rating < minRating) return false;
+    return true;
+  });
+}
+
+function updateAvailableCount() {
+  document.getElementById('availableCount').textContent = getFilteredMovies().length;
+}
+
+function renderStars(rating) {
+  const full = Math.floor(rating / 2);
+  const half = rating % 2 >= 1;
+  const empty = 5 - full - (half ? 1 : 0);
+  let html = '';
+  for (let i = 0; i < full; i++) html += '<i class="fas fa-star star-filled"></i>';
+  if (half) html += '<i class="fas fa-star-half-alt star-filled"></i>';
+  for (let i = 0; i < empty; i++) html += '<i class="far fa-star star-empty"></i>';
+  return html;
+}
+
+function renderResultCard(movie) {
+  const card = document.getElementById('resultCard');
+  card.innerHTML = `
+    <div class="movie-card-grid grid grid-cols-1 md:grid-cols-[240px_1fr]" style="grid-template-columns:240px 1fr;">
+      <div class="relative overflow-hidden poster-shimmer" style="min-height:340px;">
+        <img src="https://picsum.photos/seed/${movie.seed}/480/680.jpg"
+             alt="${movie.title} poster"
+             class="w-full h-full object-cover"
+             loading="eager"
+             style="min-height:340px;">
+        <div class="absolute inset-0" style="background:linear-gradient(to right,transparent 60%,var(--card) 100%);"></div>
+        <div class="absolute bottom-0 left-0 right-0 h-20" style="background:linear-gradient(to top,var(--card),transparent);"></div>
+      </div>
+      <div class="p-6 md:p-8 flex flex-col justify-center">
+        <div class="flex items-start justify-between gap-4 mb-4">
+          <h2 class="font-creep text-3xl md:text-4xl" style="color:var(--fg);">${movie.title}</h2>
+          <span class="text-3xl font-bold shrink-0" style="color:var(--accent);">${movie.rating.toFixed(1)}</span>
+        </div>
+        <div class="flex items-center flex-wrap gap-3 mb-3 text-sm" style="color:var(--muted);">
+          <span><i class="fas fa-calendar-alt mr-1"></i>${movie.year}</span>
+          <span class="w-1 h-1 rounded-full" style="background:var(--border);"></span>
+          <span><i class="fas fa-video mr-1"></i>${movie.director}</span>
+          <span class="w-1 h-1 rounded-full" style="background:var(--border);"></span>
+          <span class="px-2 py-0.5 rounded text-xs font-semibold" style="background:rgba(196,30,30,0.15);color:var(--accent);">${movie.subgenre}</span>
+        </div>
+        <div class="mb-4 text-sm" style="color:var(--accent);">${renderStars(movie.rating)}</div>
+        <p class="text-sm leading-relaxed" style="color:var(--fg);opacity:0.8;">${movie.synopsis}</p>
+        <div class="mt-6 flex gap-3">
+          <button onclick="randomize()" class="text-sm px-5 py-2 rounded border cursor-pointer transition-all hover:scale-105"
+                  style="border-color:var(--accent);color:var(--accent);">
+            <i class="fas fa-dice mr-2"></i>Another
+          </button>
+          <button onclick="copyToClipboard('${movie.title} (${movie.year})')" class="text-sm px-5 py-2 rounded border cursor-pointer transition-all hover:scale-105"
+                  style="border-color:var(--border);color:var(--muted);">
+            <i class="fas fa-share-alt mr-2"></i>Share
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderHistory() {
+  const section = document.getElementById('historySection');
+  const list = document.getElementById('historyList');
+  if (history.length === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+  list.innerHTML = history.map((m, i) => `
+    <div class="history-item flex items-center gap-4 p-3 rounded-lg border" style="background:var(--card);border-color:var(--border);">
+      <img src="https://picsum.photos/seed/${m.seed}/80/80.jpg" alt="" class="w-12 h-12 rounded object-cover shrink-0">
+      <div class="flex-1 min-w-0">
+        <p class="font-semibold text-sm truncate" style="color:var(--fg);">${m.title}</p>
+        <p class="text-xs" style="color:var(--muted);">${m.year} &middot; ${m.subgenre} &middot; ${m.rating.toFixed(1)}</p>
+      </div>
+      <span class="text-xs px-2 py-1 rounded" style="background:rgba(196,30,30,0.1);color:var(--accent);">#${i + 1}</span>
+    </div>
+  `).join('');
+}
+
+// ─── Randomize Logic ───
+function randomize() {
+  if (isRandomizing) return;
+  const filtered = getFilteredMovies();
+  if (filtered.length === 0) {
+    showToast("No movies match your filters. Adjust and try again.", "warning");
+    return;
+  }
+
+  isRandomizing = true;
+  const btn = document.getElementById('randomizeBtn');
+  const resultSection = document.getElementById('resultSection');
+  const resultCard = document.getElementById('resultCard');
+
+  btn.classList.add('glitch-active');
+  document.body.classList.add('shake');
+
+  let cycles = 0;
+  const totalCycles = 18;
+  const interval = setInterval(() => {
+    const randomMovie = filtered[Math.floor(Math.random() * filtered.length)];
+    resultSection.classList.remove('hidden');
+    resultCard.innerHTML = `
+      <div class="p-8 md:p-12 text-center">
+        <p class="font-creep text-2xl md:text-3xl glitch-active" style="color:var(--accent);">${randomMovie.title}</p>
+        <p class="text-sm mt-2" style="color:var(--muted);">${randomMovie.year}</p>
+      </div>
+    `;
+    cycles++;
+    if (cycles >= totalCycles) {
+      clearInterval(interval);
+
+      const finalMovie = filtered[Math.floor(Math.random() * filtered.length)];
+      renderResultCard(finalMovie);
+      resultCard.classList.remove('card-reveal');
+      void resultCard.offsetWidth;
+      resultCard.classList.add('card-reveal');
+
+      history.unshift(finalMovie);
+      if (history.length > 8) history.pop();
+      renderHistory();
+
+      btn.classList.remove('glitch-active');
+      document.body.classList.remove('shake');
+      isRandomizing = false;
+
+      resultSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, 70 + cycles * 8);
+}
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    showToast(`Copied "${text}" to clipboard`, "success");
+  }).catch(() => {
+    showToast("Failed to copy", "error");
+  });
+}
+
+// ─── Toast System ───
+function showToast(message, type = "info") {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  const colors = {
+    success: "border-green-600 text-green-400",
+    error: "border-red-600 text-red-400",
+    warning: "border-yellow-600 text-yellow-400",
+    info: "border-gray-500 text-gray-300"
+  };
+  const icons = {
+    success: "fa-check-circle",
+    error: "fa-exclamation-circle",
+    warning: "fa-exclamation-triangle",
+    info: "fa-info-circle"
+  };
+  toast.className = `toast-enter flex items-center gap-2 px-4 py-2 rounded-lg border text-sm ${colors[type] || colors.info}`;
+  toast.style.background = "var(--card)";
+  toast.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i><span>${message}</span>`;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.remove('toast-enter');
+    toast.classList.add('toast-exit');
+    setTimeout(() => toast.remove(), 400);
+  }, 3000);
+}
+
+// ─── Fog Canvas ───
+function initFogCanvas() {
+  const canvas = document.getElementById('fogCanvas');
+  const ctx = canvas.getContext('2d');
+  let w, h;
+  const blobs = [];
+
+  function resize() {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  for (let i = 0; i < 6; i++) {
+    blobs.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      r: 150 + Math.random() * 250,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.15,
+      opacity: 0.015 + Math.random() * 0.02
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    blobs.forEach(b => {
+      b.x += b.vx;
+      b.y += b.vy;
+      if (b.x < -b.r) b.x = w + b.r;
+      if (b.x > w + b.r) b.x = -b.r;
+      if (b.y < -b.r) b.y = h + b.r;
+      if (b.y > h + b.r) b.y = -b.r;
+
+      const safeR = Math.max(1, b.r);
+      const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, safeR);
+      grad.addColorStop(0, `rgba(139,0,0,${b.opacity})`);
+      grad.addColorStop(0.5, `rgba(80,10,10,${b.opacity * 0.5})`);
+      grad.addColorStop(1, `rgba(0,0,0,0)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(b.x - safeR, b.y - safeR, safeR * 2, safeR * 2);
+    });
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+// ─── Blood Drips ───
+function spawnBloodDrips() {
+  const container = document.getElementById('bloodDrips');
+  for (let i = 0; i < 8; i++) {
+    const drip = document.createElement('div');
+    drip.className = 'blood-drip';
+    drip.style.left = (5 + Math.random() * 90) + '%';
+    drip.style.animationDelay = (Math.random() * 5) + 's';
+    drip.style.animationDuration = (2 + Math.random() * 3) + 's';
+    container.appendChild(drip);
+  }
+}
+
+// ─── Floating Particles ───
+function spawnParticles() {
+  const container = document.getElementById('particles');
+  function createParticle() {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.bottom = '-10px';
+    const duration = 6 + Math.random() * 10;
+    const size = 1 + Math.random() * 2;
+    p.style.width = size + 'px';
+    p.style.height = size + 'px';
+    p.style.animation = `float ${duration}s linear forwards`;
+    container.appendChild(p);
+    setTimeout(() => p.remove(), duration * 1000);
+  }
+  setInterval(createParticle, 800);
+  for (let i = 0; i < 5; i++) setTimeout(createParticle, i * 200);
+}
+
+// ─── Event Bindings ───
+function bindEvents() {
+  document.getElementById('genreChips').addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-genre]');
+    if (!chip) return;
+    const genre = chip.dataset.genre;
+    if (activeGenres.has(genre)) {
+      activeGenres.delete(genre);
+      chip.classList.remove('active');
+      chip.setAttribute('aria-pressed', 'false');
+    } else {
+      activeGenres.add(genre);
+      chip.classList.add('active');
+      chip.setAttribute('aria-pressed', 'true');
+    }
+    updateAvailableCount();
+  });
+
+  document.getElementById('decadeChips').addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-decade]');
+    if (!chip) return;
+    const decade = parseInt(chip.dataset.decade);
+    if (activeDecades.has(decade)) {
+      activeDecades.delete(decade);
+      chip.classList.remove('active');
+      chip.setAttribute('aria-pressed', 'false');
+    } else {
+      activeDecades.add(decade);
+      chip.classList.add('active');
+      chip.setAttribute('aria-pressed', 'true');
+    }
+    updateAvailableCount();
+  });
+
+  const slider = document.getElementById('ratingSlider');
+  const ratingDisplay = document.getElementById('ratingValue');
+  slider.addEventListener('input', () => {
+    minRating = parseFloat(slider.value);
+    ratingDisplay.textContent = minRating.toFixed(1);
+    updateAvailableCount();
+  });
+
+  document.getElementById('randomizeBtn').addEventListener('click', randomize);
+
+  document.getElementById('clearHistory').addEventListener('click', () => {
+    history = [];
+    renderHistory();
+    showToast("History cleared", "info");
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && document.activeElement === document.body) {
+      e.preventDefault();
+      randomize();
+    }
+  });
+}
+
+// ─── Start ───
+init();
+</script>
+</body>
+</html>
